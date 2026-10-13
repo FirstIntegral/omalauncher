@@ -50,21 +50,30 @@ drawing.
 
 Opt-in, in settings › linux. The device node picks the driver. Mali (v10+:
 Pixel 7 and newer, recent MediaTek) uses the pinned PanVK-kbase driver on
-`/dev/mali0`, from zenithblue-oss/panvk-kbase-android. Adreno uses the pinned
-Turnip KGSL driver on `/dev/kgsl-3d0`, the Arch `vulkan-freedreno` package
-from lfdevs/mesa-for-android-container (turnip-26.3.0-devel-20260824). Arch's
-own Mesa talks to DRM, so it would not see `/dev/kgsl-3d0`. Both blobs are
-checked against their sha256 and installed under `/usr/local`, where pacman
-never touches them. Turning one on also installs Mesa and the Vulkan loader
-with pacman. OpenGL is Arch's stock Mesa on top, via zink. Frames still
-arrive as wl_shm buffers (`MESA_VK_WSI_DEBUG=sw`), so the compositor is the
-same either way.
+`/dev/mali0`, from zenithblue-oss/panvk-kbase-android. Adreno 6xx and newer
+use the pinned Turnip KGSL driver on `/dev/kgsl-3d0`, the Arch
+`vulkan-freedreno` package from lfdevs/mesa-for-android-container
+(turnip-26.3.0-devel-20260824). The model comes from
+`/sys/class/kgsl/kgsl-3d0/gpu_model`. An older Adreno, or a model that cannot
+be read, is not offered. Arch's own Mesa talks to DRM, so it would not see
+`/dev/kgsl-3d0`. Both blobs are checked against their sha256 and installed
+under `/usr/local`, and both ICD manifests live under
+`/usr/local/share/vulkan/icd.d`, which pacman does not own. A download that
+fails deletes its temp files on the way out. Turning one on also installs
+Mesa and the Vulkan loader with pacman. OpenGL is Arch's stock Mesa on top,
+via zink. Frames still arrive as wl_shm buffers (`MESA_VK_WSI_DEBUG=sw`), so
+the compositor is the same either way.
 
 `linux/Gpu.kt` only switches guest apps to the GPU (`Proot.graphicsEnv`)
 after a check passes (vulkaninfo finds PanVK or Turnip, eglinfo gets zink),
-and checks again after every system update; if that fails, apps render in
-software (llvmpipe) and settings offers a retry. One app can opt out with
-`GALLIUM_DRIVER=llvmpipe app`. Terminal apps (foot) draw on the CPU and
+and checks again after every system update; if that fails, the ICD manifest
+is removed and apps render in software (llvmpipe). Software mode sets `VK_ICD_FILENAMES` and `VK_DRIVER_FILES` to a manifest
+that is never created, so the loader does not scan the default ICD
+directories. The loader prefers `VK_DRIVER_FILES`, so turning the GPU on
+sets both names to the real manifest. The check unsets the software values
+before it exports those. Settings offers a
+retry. One app can opt out with `GALLIUM_DRIVER=llvmpipe app`. Terminal apps
+(foot) draw on the CPU and
 don't change.
 
 ## Updates
