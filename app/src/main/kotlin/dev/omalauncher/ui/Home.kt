@@ -40,6 +40,7 @@ import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -112,6 +113,10 @@ fun HomeScreen(
     }
     // The background slides with the pages, like stock launchers. Our live wallpaper gets it through Android.
     val view = LocalView.current
+    DisposableEffect(engine, view) {
+        engine.view = view
+        onDispose { if (engine.view === view) engine.view = null }
+    }
     LaunchedEffect(pager, view) {
         val wallpapers = WallpaperManager.getInstance(view.context)
         snapshotFlow {
@@ -184,7 +189,7 @@ fun HomeScreen(
     val side = homeSide()
     val turned = homeTurned()
     val sideRoom = sideWidth()
-    val barRoom = with(density) { state.barHeight.takeIf { it > 0 }?.toDp() ?: (PromptBarHeight + 12.dp) }
+    val barRoom = with(density) { state.barHeight.takeIf { it > 0 }?.toDp() ?: (PromptBarHeight + HomeGap + EdgeGap) }
     LaunchedEffect(extraKeys) { if (!extraKeys) terminals.extraKeys = null }
     Box(
         modifier
@@ -216,7 +221,7 @@ fun HomeScreen(
                         imeTarget = imeTarget.getBottom(density),
                         windowHeight = view.height,
                         margin = 8.dp.toPx() + keys,
-                        top = statusBar.getTop(density) + 6.dp.toPx(),
+                        top = statusBar.getTop(density) + EdgeGap.toPx(),
                         minHeight = 64.dp.toPx(),
                     )
             }
@@ -236,8 +241,8 @@ fun HomeScreen(
                 }
             }
             // Room for the bar, which DesktopScreen draws over the pages (so the keyboard lifts it without shrinking
-            // the grid). The grid ends with its own gap; below it the strip, a gap, the bar and a gap: the bar as
-            // measured, since a large font makes it taller. In a phone's landscape they stand beside it instead, on
+            // the grid). The grid ends with a gap between tiles; below it the strip, another gap, the bar and the gap
+            // to the edge: the bar as measured, since a large font makes it taller. In a phone's landscape they stand beside it instead, on
             // the side portrait's bottom turned to.
             .padding(
                 start = if (side == HomeSide.Left) sideRoom else 0.dp,
@@ -331,6 +336,7 @@ fun HomeScreen(
             // home's to swipe and long-press there until it does.
             room = if (LauncherStyle.recentApps && side == null) RecentStripHeight else 0.dp,
             turned = turned,
+            side = side,
             per = per,
             onLongPressEmpty = { openMenu(null) },
             onNoRoom = { item -> showPage = engine.moveToFreePage(item) },

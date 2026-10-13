@@ -47,12 +47,12 @@ fun OverlayPanel(
             .background(Palette.overlay)
             .clickable(onClick = onDismiss)
             .safeDrawingPadding()
-            .padding(HomeGap),
+            .padding(PanelGap),
     ) {
         Column(
             Modifier
                 .fillMaxSize()
-                .frame(2.dp, Palette.accent, Palette.background, radius = 20.dp)
+                .frame(LauncherStyle.panelBorderWidth, Palette.accent, Palette.background, radius = 20.dp)
                 // Taps inside the panel don't reach the scrim behind it.
                 .pointerInput(Unit) { detectTapGestures { } }
                 .padding(PanelPadding),

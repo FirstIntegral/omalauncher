@@ -13,6 +13,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import dev.omalauncher.linux.AGENTS
@@ -36,6 +37,8 @@ import dev.omalauncher.linux.matches
 import dev.omalauncher.linux.resolveLinuxIcon
 import dev.omalauncher.linux.run
 import dev.omalauncher.linux.shellQuote
+import dev.omalauncher.theme.Style
+import dev.omalauncher.theme.StyleStore
 import dev.omalauncher.theme.ThemeStore
 import dev.omalauncher.ui.Gestures
 import dev.omalauncher.ui.KeyboardBridge
@@ -55,6 +58,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
@@ -72,7 +76,8 @@ class Runtime(
     val server = WaylandServer(proot.waylandSocket.path, wm).also { wm.server = it }
     val keyboard = KeyboardBridge(wm)
     val terminals = TerminalTiles(this)
-    val terminalFont = TerminalFont(context, proot)
+    val style = StyleStore(context)
+    val terminalFont = TerminalFont(proot, style)
     val gestures = Gestures(context)
     val linuxApps = mutableStateListOf<LinuxApp>()
 
@@ -83,7 +88,7 @@ class Runtime(
     val linuxMasks = mutableStateMapOf<String, ImageBitmap>()
     val androidApps = AndroidAppCatalog(context)
     val usage = AppUsage(context)
-    val themes = ThemeStore(context, proot, isLinux = { linux }, onConfigChanged = ::syncGuest)
+    val themes = ThemeStore(context, proot, style, isLinux = { linux }, onConfigChanged = ::syncGuest)
     private val audio = AudioBridge(proot)
     private val openBridge = OpenBridge(context, proot, onOpenFiles = ::openFiles)
     val agents = AgentStore(proot, onChanged = ::syncGuest)
@@ -93,7 +98,7 @@ class Runtime(
     val gpu = Gpu(context, proot)
 
     /** The launcher's own provided files (default widgets, their docs); see [Provisioner]. */
-    private val launcherFiles = Provisioner(proot.filesDir, LauncherData.LAUNCHER_MANIFEST, listOf(widgets::managed))
+    private val launcherFiles = Provisioner(proot.filesDir, LauncherData.LAUNCHER_MANIFEST, listOf(widgets::managed, style::managed))
 
     /** Every launcher-provided file in the guest; synced only while Linux is installed. */
     private val provisioner: Provisioner =
@@ -139,7 +144,16 @@ class Runtime(
     init {
         // Saved, so removing Linux later doesn't bring the first-run screen back.
         if (launcherReady) prefs.edit().putBoolean(SETUP_DONE, true).apply()
-        themes.loadStyle()
+        themes.loadPalette()
+        // An agent or the user edited style.toml; the rest of the style is read where it's drawn.
+        style.onExternalChange = { old, new ->
+            val changed = new.changed(old)
+            if (Style.THEME.key in changed || Style.BACKGROUND.key in changed) scope.launch { themes.followStyle() }
+        }
+        // foot.ini follows the terminal settings, from the Style menu or the file alike.
+        scope.launch {
+            snapshotFlow { style.style[Style.TERMINAL_FONT] to style.style[Style.TERMINAL_TEXT] }.drop(1).collect { terminalFont.write() }
+        }
         androidApps.start()
         // Omarchy's Super bindings inside Linux windows; the home screen handles its own (see MainActivity).
         keyboard.onShortcut = { code ->
@@ -185,6 +199,7 @@ class Runtime(
                 agents.load()
             }
             themes.load()
+            style.start()
             widgets.start()
             // On the first-run screen the download is the screen's job, with progress.
             if (launcherReady) scope.launch { themes.ensureRelease() }

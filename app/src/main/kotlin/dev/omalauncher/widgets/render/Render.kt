@@ -49,6 +49,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorProducer
+import androidx.compose.ui.graphics.ImageBitmapConfig
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -288,7 +289,7 @@ private fun Element(
         "Text" -> TextNode(p, mod)
         "Button" -> {
             val color = p.color("color") { Palette.accent }
-            val radius = p.float("radius", 8f * LauncherStyle.corners.scale)
+            val radius = p.float("radius", 8f * LauncherStyle.cornerScale)
             Box(
                 mod
                     .drawBehind {
@@ -380,7 +381,8 @@ private fun Element(
                 } else {
                     inst.image(src)
                 }
-            val tint = p.observe("tint")?.let { p.color(it) }
+            // An alpha-only image (an app icon's silhouette, with monochrome icons) needs a color to show.
+            val tint = p.observe("tint")?.let { p.color(it) } ?: Palette.foreground.takeIf { bitmap?.config == ImageBitmapConfig.Alpha8 }
             if (bitmap != null) {
                 Image(
                     bitmap,
@@ -531,7 +533,7 @@ private fun common(
         val borderColor = p.color("borderColor") { Palette.border }
         val border = p.float("border", 0f)
         // Bordered elements (buttons, frames) follow the launcher's corner style unless they set a radius.
-        val radius = p.float("radius", if (p.has("border")) 8f * LauncherStyle.corners.scale else 0f)
+        val radius = p.float("radius", if (p.has("border")) 8f * LauncherStyle.cornerScale else 0f)
         m =
             m.drawBehind {
                 val r = CornerRadius(radius().dp.toPx())

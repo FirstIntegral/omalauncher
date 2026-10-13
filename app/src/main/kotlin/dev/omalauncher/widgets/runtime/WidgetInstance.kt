@@ -91,6 +91,9 @@ interface Services {
     /** An image Android holds, like album art: `Image { src: m.art }`. */
     fun androidImage(src: String): Bitmap? = null
 
+    /** An Android app's icon, `Image { src: "app:org.pkg" }`; null until the launcher has loaded it, or if there's no such app. */
+    fun appIcon(pkg: String): ImageBitmap? = null
+
     /** Runs an action; [done] is called once its effects should be visible, to refresh the widget that ran it. */
     fun act(
         name: String,
@@ -271,7 +274,7 @@ class WidgetInstance(
         val v =
             when (name) {
                 "linux" -> return bool(linux())
-                "corners" -> return Num(LauncherStyle.corners.scale.toDouble())
+                "corners" -> return Num(LauncherStyle.cornerScale.toDouble())
                 "screenWidth" -> screenSize.value[0]
                 "screenHeight" -> screenSize.value[1]
                 "cols" -> tileSize.value[0]
@@ -383,6 +386,8 @@ class WidgetInstance(
      * to call while drawing: it only reads state.
      */
     fun image(src: String): ImageBitmap? {
+        // The launcher already holds every app's icon, as snapshot state: reading it redraws once it loads.
+        if (src.startsWith("app:")) return services.appIcon(src.removePrefix("app:"))
         // Album art changes with every track: Android holds the current one. Only its wrapper is
         // kept, so asking again for the same art gives the same image and redraws nothing.
         if (src.startsWith("media:")) {

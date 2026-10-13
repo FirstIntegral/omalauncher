@@ -1,6 +1,7 @@
 package dev.omalauncher.ui
 
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.activity.compose.BackHandler
 import androidx.compose.ui.graphics.graphicsLayer
@@ -15,11 +16,15 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
@@ -28,12 +33,23 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import dev.omalauncher.Runtime
+import dev.omalauncher.theme.Style
+import dev.omalauncher.theme.StyleStore
 import dev.omalauncher.widgets.checkSecretsCommand
 import dev.omalauncher.widgets.publishWidgetCommand
 import dev.omalauncher.widgets.reviewSharedWidgetCommand
@@ -106,6 +122,7 @@ private fun DesktopScreen(
             }
         }
     }
+    SystemBarFrames()
     val covered = remember(state) { { state.homeCovered || runtime.widgets.openScreen != null } }
     CompositionLocalProvider(LocalHomeCovered provides covered) {
         Column(Modifier.fillMaxSize().safePadding()) {
@@ -213,7 +230,36 @@ private fun DesktopScreen(
 
     // Full-screen panels draw over the bar.
     ThemesOverlay(runtime, state)
+    StyleErrors(runtime.style)
 }
+
+/**
+ * What style.toml got wrong, at the top over everything, like Hyprland's bar for config errors: errors.txt is out
+ * of sight without a terminal. A tap hides the problems shown; new ones show again.
+ */
+@Composable
+private fun StyleErrors(style: StyleStore) {
+    var hidden by remember { mutableStateOf(emptySet<String>()) }
+    val shown = style.errors.filterNot { it in hidden }
+    if (shown.isEmpty()) return
+    Box(Modifier.fillMaxSize().safePadding().padding(PanelGap), contentAlignment = Alignment.TopCenter) {
+        Column(
+            Modifier
+                .widthIn(max = ReadingWidth)
+                .fillMaxWidth()
+                .frame(2.dp, Palette.red, Palette.background)
+                .clickable { hidden = hidden + shown }
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+        ) {
+            BasicText("style.toml: ${if (shown.size == 1) "1 problem" else "${shown.size} problems"}", style = Mono.copy(color = Palette.red))
+            for (line in shown.take(MAX_ERRORS)) BasicText(line, style = Mono.copy(fontSize = TextSize.Small))
+            val more = if (shown.size > MAX_ERRORS) "${shown.size - MAX_ERRORS} more in errors.txt · " else ""
+            BasicText("${more}tap to hide", style = Mono.copy(color = Palette.muted, fontSize = TextSize.Small))
+        }
+    }
+}
+
+private const val MAX_ERRORS = 3
 
 @Composable
 private fun ThemesOverlay(
@@ -299,3 +345,59 @@ private fun ThemesOverlay(
 /** Clear of the system bars and of the camera cutout, which landscape puts at a side. */
 @Composable
 private fun Modifier.safePadding() = windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout))
+
+/**
+ * Bands behind Android's status bar and navigation bar, so its clock, notification icons and gesture handle sit on
+ * the same glass as home's tiles rather than on the wallpaper. Each fills its bar out to the screen's edges, with the
+ * tiles' border only along the side facing them, a gap away. Under the drawer and full-screen panels, which cover the
+ * bars themselves.
+ */
+@Composable
+private fun SystemBarFrames() {
+    val density = LocalDensity.current
+    val direction = LocalLayoutDirection.current
+    val status = WindowInsets.statusBars
+    val nav = WindowInsets.navigationBars
+    with(density) {
+        val top = status.getTop(density).toDp()
+        val bottom = nav.getBottom(density).toDp()
+        // Three-button navigation stands at a side in a phone's landscape.
+        val left = nav.getLeft(density, direction).toDp()
+        val right = nav.getRight(density, direction).toDp()
+        val status = Style.STATUS_BAR
+        val navigation = Style.NAVIGATION_BAR
+        Box(Modifier.fillMaxSize()) {
+            // Thinner than that leaves no room for a band: a gesture bar hidden in the system's settings, say.
+            fun Dp.band() = takeIf { it >= 8.dp }
+            val across = Modifier.fillMaxWidth()
+            top.band()?.let { Band(across.align(Alignment.TopCenter).height(it), status) { w -> Rect(0f, size.height - w, size.width, size.height) } }
+            bottom.band()?.let { Band(across.align(Alignment.BottomCenter).height(it), navigation) { w -> Rect(0f, 0f, size.width, w) } }
+            // Between the top and bottom ones, a gap from each. Left and right of the screen, whichever way text runs.
+            val between = Modifier.fillMaxSize().padding(top = top + EdgeGap, bottom = bottom + EdgeGap)
+            left.band()?.let { Band(between.wrapContentWidth(AbsoluteAlignment.Left).width(it), navigation) { w -> Rect(size.width - w, 0f, size.width, size.height) } }
+            right.band()?.let { Band(between.wrapContentWidth(AbsoluteAlignment.Right).width(it), navigation) { w -> Rect(0f, 0f, w, size.height) } }
+        }
+    }
+}
+
+/**
+ * [bar]'s band, the tiles' glass unless style.toml says otherwise, and its border only where [line]
+ * says: the side facing the tiles. Nothing when the bar isn't framed.
+ */
+@Composable
+private fun Band(
+    modifier: Modifier,
+    bar: Style.Bar,
+    line: DrawScope.(width: Float) -> Rect,
+) {
+    val fill = LauncherStyle.barFill(bar) ?: return
+    val border = LauncherStyle.barLine(bar)
+    val width = LauncherStyle.barLineWidth(bar)
+    Box(
+        modifier.background(fill).drawBehind {
+            if (border == null || width == 0.dp) return@drawBehind
+            val r = line(width.toPx())
+            drawRect(border, r.topLeft, r.size)
+        },
+    )
+}

@@ -4,6 +4,20 @@ The most important changes in each release. The Play Store notes for a release
 are in `fastlane/metadata/android/en-US/changelogs/<versionCode>.txt`.
 Dates are when the build was uploaded to Play.
 
+## 0.7.0 (versionCode 12) – 2026-10-13
+
+- The style lives in `~/.config/omalauncher/style/style.toml`, which you or an agent can edit
+  from Linux; changes show within a second, and settings it can't read show in a banner.
+  `defaults.toml` next to it lists every setting. Your earlier style carries over.
+- New style settings, like Hyprland's: gaps between widgets and to the edges, border widths
+  and colors, the focused border, and screen panels' gaps and borders.
+- The status bar and the gesture bar can sit on the same glass as the widgets
+  (style → system bars); they're bare by default.
+- Widgets can show the next alarm and the phone's modes (Do Not Disturb, battery saver,
+  ringer, torch), turn the torch on, share text, buzz, and draw app icons (owl 7).
+- yay in a terminal no longer asks for root's password, and AUR builds no longer print
+  "exec: -v: invalid option".
+
 ## 0.6.0 (versionCode 11) – 2026-10-12
 
 - Apps from a work profile show up next to your own, marked with a briefcase,

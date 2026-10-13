@@ -18,6 +18,7 @@ shift || true
 export ANDROID_SERIAL="${ANDROID_SERIAL:-emulator-5554}"
 DEFAULT_THEME=tokyo-night
 APP=/data/data/dev.omalauncher/files/widgets
+STATE=/data/data/dev.omalauncher/files/widget-state
 WORK="$(mktemp -d)"
 
 adb root >/dev/null
@@ -77,6 +78,19 @@ demo() {
   wait_for 60 "test -f $APP/.demo.done" || echo "demo $1 didn't finish" >&2
   adb shell "rm -f $APP/.demo.sh $APP/.demo-run.sh $APP/.demo.done"
 }
+# Saved `persist` state for widgets whose demo data hangs off settings the user makes, written
+# where the launcher keeps it (filesDir/widget-state) before the widget loads.
+seed() {
+  local json
+  case $1 in
+    google-calendar) json='{"cals":[{"name":"Personal","url":"https://calendar.google.com/calendar/ical/demo-personal/basic.ics","color":0,"on":true},{"name":"Work","url":"https://calendar.google.com/calendar/ical/demo-work/basic.ics","color":2,"on":true}],"days":14}' ;;
+    *) return 0 ;;
+  esac
+  printf '{"v":1,"savedAt":%s,"values":%s}' "$(date +%s)" "$json" > "$WORK/state.json"
+  adb push "$WORK/state.json" /data/local/tmp/store-preview-state.json >/dev/null
+  adb shell "cp /data/local/tmp/store-preview-state.json $STATE/$2.json && chown $owner $STATE/$2.json && chmod 600 $STATE/$2.json && chcon $(adb shell ls -Zd $STATE | cut -d' ' -f1) $STATE/$2.json"
+}
+
 demo on
 trap 'demo off; rm -rf "$WORK"' EXIT
 
@@ -92,6 +106,7 @@ for dir in "${dirs[@]}"; do
   hash=$(shasum -a 256 "$dir/widget.owl" | cut -d' ' -f1)
   echo "$(basename "$dir")"
   adb shell "rm -rf $APP/.preview/themes/$name.done"
+  seed "$(basename "$dir")" "$name"
   put "$dir/widget.owl" "$name"
   if ! wait_for 30 "grep -q $hash $APP/.check/$name.txt"; then
     echo "  didn't compile in time; skipped" >&2
