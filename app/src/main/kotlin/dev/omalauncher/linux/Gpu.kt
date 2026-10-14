@@ -9,6 +9,7 @@ import androidx.compose.runtime.setValue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.FileNotFoundException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 
@@ -16,15 +17,16 @@ import java.nio.file.LinkOption
  * Opt-in GPU acceleration for Linux apps. The device node picks the driver:
  * PanVK-kbase on /dev/mali0 (Mali v10+: Pixel 7 and newer, recent MediaTek),
  * or Turnip on /dev/kgsl-3d0 when that node is an Adreno 6xx or newer.
- * Arch's stock Mesa runs OpenGL on top with zink. Frames still reach us as
- * wl_shm buffers (MESA_VK_WSI_DEBUG=sw), so the compositor doesn't change.
+ * OpenGL is zink on top of that Vulkan driver. Adreno uses a patched libEGL
+ * that keeps zink when the compositor only offers wl_shm. Frames still reach
+ * us as wl_shm buffers (MESA_VK_WSI_DEBUG=sw), so the compositor doesn't change.
  *
  * Each driver is a prerelease and talks to a kernel interface that Android
  * updates can change, so it is only used after a check passes, and checked
  * again after every system update; until then apps render in software.
  */
 class Gpu(
-    context: Context,
+    private val context: Context,
     private val proot: Proot,
 ) {
     private val prefs = context.getSharedPreferences("launcher", Context.MODE_PRIVATE)
@@ -94,6 +96,7 @@ class Gpu(
         if (state is JobState.Working) return
         prefs.edit().putBoolean(WANTED, true).apply()
         wanted = true
+        if (driver.kind == GpuKind.TURNIP) stageMesaBundle()
         val script = GpuDrivers.installScript(driver) + " && " + GpuDrivers.probeScript(driver)
         if (run("installing", script)) {
             activate(driver)
@@ -137,6 +140,21 @@ class Gpu(
             }.getOrNull()
             if (head?.contains(driver.driverPath) == true) Files.deleteIfExists(legacy)
         }
+    }
+
+    /**
+     * The test build carries the patched Mesa tar. A build without that asset
+     * leaves the install script to fail closed on the missing file.
+     */
+    private fun stageMesaBundle() {
+        val dest = guestFile(GpuDrivers.MESA_ZINK_BUNDLE)
+        val input = try {
+            context.assets.open("mesa-zink/mesa-zink.tar.xz")
+        } catch (_: FileNotFoundException) {
+            return
+        }
+        dest.parentFile?.mkdirs()
+        input.use { src -> dest.outputStream().use { src.copyTo(it) } }
     }
 
     private fun guestFile(path: String) = File(proot.rootfs, path.removePrefix("/"))

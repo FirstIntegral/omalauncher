@@ -60,9 +60,14 @@ be read, is not offered. Arch's own Mesa talks to DRM, so it would not see
 under `/usr/local`, and both ICD manifests live under
 `/usr/local/share/vulkan/icd.d`, which pacman does not own. A download that
 fails deletes its temp files on the way out. Turning one on also installs
-Mesa and the Vulkan loader with pacman. OpenGL is Arch's stock Mesa on top,
-via zink. Frames still arrive as wl_shm buffers (`MESA_VK_WSI_DEBUG=sw`), so
-the compositor is the same either way.
+Mesa and the Vulkan loader with pacman. OpenGL is zink. On Adreno the guest
+uses a patched Mesa 26.2.4 libEGL (`scripts/mesa/0001-egl-wayland-keep-zink-on-shm.patch`):
+the compositor only offers `wl_shm`, stock Mesa clears zink after the Wayland
+DRM path fails, and the shm buffer stays black while frames still count.
+`MESA_LOADER_DRIVER_OVERRIDE=zink` keeps zink set so kopper presents through
+Vulkan WSI. The patched libraries live under `/usr/local/omalauncher-mesa`,
+off the default linker path. Frames still arrive as wl_shm buffers
+(`MESA_VK_WSI_DEBUG=sw`), so the compositor is the same either way.
 
 `linux/Gpu.kt` only switches guest apps to the GPU (`Proot.graphicsEnv`)
 after a check passes (vulkaninfo finds PanVK or Turnip, eglinfo gets zink),

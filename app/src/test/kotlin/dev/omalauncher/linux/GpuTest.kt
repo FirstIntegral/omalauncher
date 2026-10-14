@@ -71,6 +71,8 @@ class GpuTest {
         assertTrue(probe.contains("export MESA_VK_WSI_DEBUG='sw';"))
         assertTrue(probe.contains("export GALLIUM_DRIVER='zink';"))
         assertTrue(driver.env.any { it == "GALLIUM_DRIVER=zink" })
+        assertFalse(probe.contains("MESA_LOADER_DRIVER_OVERRIDE"))
+        assertFalse(script.contains("mesa-zink"))
     }
 
     @Test fun turnipScriptPinsTheKgslPackageAndTheExtractedLibrary() {
@@ -94,6 +96,12 @@ class GpuTest {
         assertTrue(probe.contains("export VK_ICD_FILENAMES='/usr/local/share/vulkan/icd.d/freedreno_icd.aarch64.json';"))
         assertTrue(probe.contains("export VK_DRIVER_FILES='/usr/local/share/vulkan/icd.d/freedreno_icd.aarch64.json';"))
         assertTrue(probe.contains("unset LIBGL_ALWAYS_SOFTWARE VK_ICD_FILENAMES VK_DRIVER_FILES"))
+        assertTrue(probe.contains("export MESA_LOADER_DRIVER_OVERRIDE='zink';"))
+        assertTrue(probe.contains("export GALLIUM_DRIVER='zink';"))
+        assertTrue(probe.contains("export LIBGL_DRIVERS_PATH='/usr/local/omalauncher-mesa/lib/dri';"))
+        assertTrue(probe.contains("export __EGL_VENDOR_LIBRARY_FILENAMES='/usr/local/share/glvnd/egl_vendor.d/50_mesa.json';"))
+        assertTrue(script.contains("tar -xJf '/usr/local/share/omalauncher/mesa-zink.tar.xz' -C /"))
+        assertTrue(script.contains("/usr/local/omalauncher-mesa/lib/libEGL_mesa.so"))
         assertEquals("Adreno", driver.label)
     }
 

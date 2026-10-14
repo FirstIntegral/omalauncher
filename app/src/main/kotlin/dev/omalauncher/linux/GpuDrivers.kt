@@ -37,6 +37,12 @@ internal data class GpuDriver(
     /** Under /usr/local, which pacman does not own. The loader still finds it while the file exists. */
     val icdPath: String,
     val apiVersion: String,
+    /**
+     * How OpenGL finds this GPU. Mali uses Arch's zink. Adreno also sets
+     * MESA_LOADER_DRIVER_OVERRIDE so Mesa keeps zink on the shm/kopper path,
+     * and points EGL at the patched libEGL under /usr/local/omalauncher-mesa.
+     */
+    val openGlEnv: List<String> = listOf("GALLIUM_DRIVER=zink"),
 ) {
     /**
      * Vulkan through this ICD, presented as wl_shm; OpenGL is zink on top of it.
@@ -47,8 +53,7 @@ internal data class GpuDriver(
             "VK_ICD_FILENAMES=$icdPath",
             "VK_DRIVER_FILES=$icdPath",
             "MESA_VK_WSI_DEBUG=sw",
-            "GALLIUM_DRIVER=zink",
-        )
+        ) + openGlEnv
 
     val librarySha256: String
         get() = when (val payload = payload) {
@@ -104,6 +109,17 @@ internal object GpuDrivers {
     /** Removed on the way out. A previous install wrote Mali's manifest on pacman's path. */
     const val LEGACY_MALI_ICD = "/usr/share/vulkan/icd.d/panfrost_icd.aarch64.json"
 
+    /**
+     * Patched Mesa 26.2.4 (scripts/mesa/0001-egl-wayland-keep-zink-on-shm.patch).
+     * The tar is staged into the guest from the APK before [installScript] runs.
+     * Not on the default linker path, so software mode keeps Arch's Mesa.
+     */
+    const val MESA_ZINK_BUNDLE = "/usr/local/share/omalauncher/mesa-zink.tar.xz"
+    const val MESA_ZINK_LIB = "/usr/local/omalauncher-mesa/lib/libEGL_mesa.so"
+    const val MESA_EGL_JSON = "/usr/local/share/glvnd/egl_vendor.d/50_mesa.json"
+    // Filled from the aarch64 build. An empty value makes the install fail closed.
+    const val MESA_ZINK_LIB_SHA256 = ""
+
     private val mali = GpuDriver(
         kind = GpuKind.MALI,
         probeId = "DRIVER_ID_MESA_PANVK",
@@ -135,6 +151,15 @@ internal object GpuDrivers {
         driverPath = "/usr/local/lib64/libvulkan_freedreno.so",
         icdPath = "/usr/local/share/vulkan/icd.d/freedreno_icd.aarch64.json",
         apiVersion = "1.4.359",
+        // Stock Mesa clears Zink when Wayland DRM init fails, then the shm
+        // buffer stays black. The override keeps Zink set. The two paths
+        // select the patched libEGL and its matching zink, not Arch's.
+        openGlEnv = listOf(
+            "MESA_LOADER_DRIVER_OVERRIDE=zink",
+            "GALLIUM_DRIVER=zink",
+            "LIBGL_DRIVERS_PATH=/usr/local/omalauncher-mesa/lib/dri",
+            "__EGL_VENDOR_LIBRARY_FILENAMES=/usr/local/share/glvnd/egl_vendor.d/50_mesa.json",
+        ),
     )
 
     fun of(kind: GpuKind): GpuDriver = when (kind) {
@@ -143,7 +168,22 @@ internal object GpuDrivers {
     }
 
     /** Pacman for Mesa and the loader, then the pinned blob unless that exact file is already there. */
-    fun installScript(driver: GpuDriver): String = pacmanInstall(driver.packages) + " && " + fetch(driver)
+    fun installScript(driver: GpuDriver): String {
+        val mesa = if (driver.kind == GpuKind.TURNIP) " && " + mesaZinkScript() else ""
+        return pacmanInstall(driver.packages) + " && " + fetch(driver) + mesa
+    }
+
+    /**
+     * Unpacks the patched libEGL and zink next to each other. The sha256 is the
+     * installed libEGL, so a later APK that carries a new build replaces it.
+     */
+    private fun mesaZinkScript(): String {
+        val json = """{"file_format_version":"1.0.0","ICD":{"library_path":"$MESA_ZINK_LIB"}}"""
+        val check = "echo '${MESA_ZINK_LIB_SHA256}  $MESA_ZINK_LIB' | sha256sum -c -"
+        return "{ $check 2>/dev/null || { test -n '${MESA_ZINK_LIB_SHA256}' && tar -xJf ${shellQuote(MESA_ZINK_BUNDLE)} -C / && $check; }; } && " +
+            "mkdir -p ${shellQuote(MESA_EGL_JSON.substringBeforeLast('/'))} && " +
+            "printf '%s\\n' ${shellQuote(json)} > ${shellQuote(MESA_EGL_JSON)}"
+    }
 
     /**
      * Vulkan finds the GPU through the driver, and OpenGL runs on it through zink.
