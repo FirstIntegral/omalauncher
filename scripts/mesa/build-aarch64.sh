@@ -78,11 +78,12 @@ find /dest/usr/local/omalauncher-mesa -type f | sort
 EOF
 chmod +x "$ROOT/build-inner.sh"
 
-unshare -U -r --mount --propagation private bash -c "
+# A new pid namespace is required before a user namespace may mount proc.
+unshare -U -r -m -p -f --propagation private bash -c "
 set -euo pipefail
 mount --bind '$ROOT' '$ROOT'
 mount -t proc proc '$ROOT/proc'
-mount -t sysfs sysfs '$ROOT/sys'
+mount -t sysfs sysfs '$ROOT/sys' || true
 mount --rbind /dev '$ROOT/dev'
 mount --bind '$SRC' '$ROOT/mesa'
 chroot '$ROOT' bash /build-inner.sh
