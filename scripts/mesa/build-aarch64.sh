@@ -46,7 +46,7 @@ apt-get install -y --no-install-recommends \
   libwayland-dev libdrm-dev \
   libx11-dev libxext-dev libxfixes-dev libxrandr-dev libxrender-dev \
   libxcb1-dev libx11-xcb-dev libxcb-glx0-dev libxcb-dri3-dev \
-  libxcb-present-dev libxcb-shm0-dev libxcb-xfixes0-dev \
+  libxcb-present-dev libxcb-shm0-dev libxcb-xfixes0-dev libxshmfence-dev \
   libelf-dev zlib1g-dev libexpat1-dev libffi-dev libglvnd-dev
 cd /mesa
 pip3 install --break-system-packages 'meson>=1.4.0'
