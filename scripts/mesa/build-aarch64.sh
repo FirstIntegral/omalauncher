@@ -80,7 +80,9 @@ meson setup /build \
   -Dgles1=disabled \
   -Dgles2=enabled \
   -Dshared-glapi=enabled \
-  -Dgbm=disabled \
+  -Dgbm=enabled \
+  -Dc_link_args='-Wl,-rpath,$ORIGIN,-rpath,$ORIGIN/..' \
+  -Dcpp_link_args='-Wl,-rpath,$ORIGIN,-rpath,$ORIGIN/..' \
   -Dtools=[] \
   -Dvideo-codecs=[] \
   -Dxmlconfig=disabled
