@@ -117,7 +117,9 @@ internal object GpuDrivers {
     const val MESA_ZINK_BUNDLE = "/usr/local/share/omalauncher/mesa-zink.tar.xz"
     const val MESA_ZINK_LIB = "/usr/local/omalauncher-mesa/lib/libEGL_mesa.so"
     const val MESA_EGL_JSON = "/usr/local/share/glvnd/egl_vendor.d/50_mesa.json"
-    // Filled from the aarch64 build. An empty value makes the install fail closed.
+    /** Whole archive, checked before any extract. */
+    const val MESA_ZINK_TAR_SHA256 = "104daac072cf1a0148a5928f8f773eab760512ed1bf9b05d02cc670d8150dfe3"
+    /** libEGL_mesa.so after extract. sha256sum follows the symlink. */
     const val MESA_ZINK_LIB_SHA256 = "bf9ea007f4babd55c86cfe87e8fd7b0cfa47e78fc34aa89b72fa60c7b84837e9"
 
     private val mali = GpuDriver(
@@ -179,8 +181,18 @@ internal object GpuDrivers {
      */
     private fun mesaZinkScript(): String {
         val json = """{"file_format_version":"1.0.0","ICD":{"library_path":"$MESA_ZINK_LIB"}}"""
-        val check = "echo '${MESA_ZINK_LIB_SHA256}  $MESA_ZINK_LIB' | sha256sum -c -"
-        return "{ $check 2>/dev/null || { test -n '${MESA_ZINK_LIB_SHA256}' && tar -xJf ${shellQuote(MESA_ZINK_BUNDLE)} -C / && $check; }; } && " +
+        val bundle = shellQuote(MESA_ZINK_BUNDLE)
+        val list = shellQuote("/tmp/omalauncher-mesa.list")
+        val tarOk = "echo '$MESA_ZINK_TAR_SHA256  $MESA_ZINK_BUNDLE' | sha256sum -c -"
+        val libOk = "echo '$MESA_ZINK_LIB_SHA256  $MESA_ZINK_LIB' | sha256sum -c -"
+        // Refuse a member that leaves the prefix or walks up. Then extract.
+        val members =
+            "tar -tJf $bundle > $list && " +
+                "! grep -Ev '^usr/local/omalauncher-mesa/' $list && " +
+                "! grep -E '(^/|\\.\\.)' $list"
+        val unpack =
+            "$tarOk && $members && tar -xJf $bundle -C / --no-absolute-names && $libOk && rm -f $list"
+        return "{ $libOk 2>/dev/null || { $unpack; }; } && rm -f $list && " +
             "mkdir -p ${shellQuote(MESA_EGL_JSON.substringBeforeLast('/'))} && " +
             "printf '%s\\n' ${shellQuote(json)} > ${shellQuote(MESA_EGL_JSON)}"
     }
