@@ -41,7 +41,7 @@ set -eux
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y --no-install-recommends \
-  build-essential ninja-build pkg-config python3-mako python3-yaml python3-packaging python3-pip \
+  build-essential ninja-build pkg-config python3-mako python3-yaml python3-packaging python3-pip curl \
   flex bison cmake \
   libwayland-dev libdrm-dev \
   libx11-dev libxext-dev libxfixes-dev libxrandr-dev libxrender-dev \
