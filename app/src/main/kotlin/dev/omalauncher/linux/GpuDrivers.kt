@@ -118,7 +118,7 @@ internal object GpuDrivers {
     const val MESA_ZINK_LIB = "/usr/local/omalauncher-mesa/lib/libEGL_mesa.so"
     const val MESA_EGL_JSON = "/usr/local/share/glvnd/egl_vendor.d/50_mesa.json"
     // Filled from the aarch64 build. An empty value makes the install fail closed.
-    const val MESA_ZINK_LIB_SHA256 = ""
+    const val MESA_ZINK_LIB_SHA256 = "bf9ea007f4babd55c86cfe87e8fd7b0cfa47e78fc34aa89b72fa60c7b84837e9"
 
     private val mali = GpuDriver(
         kind = GpuKind.MALI,

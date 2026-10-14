@@ -102,6 +102,7 @@ class GpuTest {
         assertTrue(probe.contains("export __EGL_VENDOR_LIBRARY_FILENAMES='/usr/local/share/glvnd/egl_vendor.d/50_mesa.json';"))
         assertTrue(script.contains("tar -xJf '/usr/local/share/omalauncher/mesa-zink.tar.xz' -C /"))
         assertTrue(script.contains("/usr/local/omalauncher-mesa/lib/libEGL_mesa.so"))
+        assertTrue(script.contains("bf9ea007f4babd55c86cfe87e8fd7b0cfa47e78fc34aa89b72fa60c7b84837e9"))
         assertEquals("Adreno", driver.label)
     }
 
