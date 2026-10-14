@@ -70,7 +70,7 @@ meson setup /build \
   --libdir=lib \
   -Dbuildtype=release \
   -Db_ndebug=true \
-  -Dplatforms=wayland \
+  -Dplatforms=wayland,x11 \
   -Dgallium-drivers=zink \
   -Dvulkan-drivers=[] \
   -Degl=enabled \
