@@ -30,7 +30,9 @@ if [ ! -x "$ROOT/bin/bash" ]; then
   tar -C "$ROOT" -xzf "$CACHE/ubuntu-base.tar.gz"
 fi
 cp /etc/resolv.conf "$ROOT/etc/resolv.conf"
-mkdir -p "$ROOT/usr/sbin" "$ROOT/proc" "$ROOT/sys" "$ROOT/dev" "$ROOT/mesa" "$ROOT/dest"
+mkdir -p "$ROOT/usr/sbin" "$ROOT/proc" "$ROOT/sys" "$ROOT/dev" "$ROOT/mesa" "$ROOT/dest" "$ROOT/etc/apt/apt.conf.d"
+# The user namespace only maps root, so apt cannot drop to the _apt user.
+printf 'APT::Sandbox::User "root";\n' > "$ROOT/etc/apt/apt.conf.d/99-no-sandbox"
 printf '#!/bin/sh\nexit 101\n' > "$ROOT/usr/sbin/policy-rc.d"
 chmod +x "$ROOT/usr/sbin/policy-rc.d"
 
