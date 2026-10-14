@@ -54,11 +54,11 @@ hash -r
 meson --version
 # Ubuntu 24.04's Wayland has no wayland-egl-backend.pc. Mesa 26.2 requires it.
 if ! pkg-config --exists 'wayland-egl-backend >= 3'; then
-  curl -fL --retry 3 -o /tmp/wayland.tar.xz \
-    https://gitlab.freedesktop.org/wayland/wayland/-/releases/1.24.0/downloads/wayland-1.24.0.tar.xz
+  curl -fL --retry 3 -o /tmp/wayland.tar.gz \
+    https://gitlab.freedesktop.org/wayland/wayland/-/archive/1.24.0/wayland-1.24.0.tar.gz
   rm -rf /tmp/wayland-src /tmp/wayland-build
   mkdir -p /tmp/wayland-src
-  tar -C /tmp/wayland-src --strip-components=1 -xJf /tmp/wayland.tar.xz
+  tar -C /tmp/wayland-src --strip-components=1 -xzf /tmp/wayland.tar.gz
   meson setup /tmp/wayland-build /tmp/wayland-src \
     --prefix=/usr --libdir=lib/aarch64-linux-gnu \
     -Ddocumentation=false -Ddtd_validation=false -Dtests=false
