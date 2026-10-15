@@ -186,12 +186,16 @@ internal object GpuDrivers {
         val tarOk = "echo '$MESA_ZINK_TAR_SHA256  $MESA_ZINK_BUNDLE' | sha256sum -c -"
         val libOk = "echo '$MESA_ZINK_LIB_SHA256  $MESA_ZINK_LIB' | sha256sum -c -"
         // Refuse a member that leaves the prefix or walks up. Then extract.
+        // Arch's tar is GNU tar. It has no --no-absolute-names (that flag is
+        // bsdtar) and exits 64 before unpacking. GNU tar already strips a
+        // leading slash unless --absolute-names is set, which this script
+        // does not pass.
         val members =
             "tar -tJf $bundle > $list && " +
                 "! grep -Ev '^usr/local/omalauncher-mesa/' $list && " +
                 "! grep -E '(^/|\\.\\.)' $list"
         val unpack =
-            "$tarOk && $members && tar -xJf $bundle -C / --no-absolute-names && $libOk && rm -f $list"
+            "$tarOk && $members && tar -xJf $bundle -C / && $libOk && rm -f $list"
         return "{ $libOk 2>/dev/null || { $unpack; }; } && rm -f $list && " +
             "mkdir -p ${shellQuote(MESA_EGL_JSON.substringBeforeLast('/'))} && " +
             "printf '%s\\n' ${shellQuote(json)} > ${shellQuote(MESA_EGL_JSON)}"
