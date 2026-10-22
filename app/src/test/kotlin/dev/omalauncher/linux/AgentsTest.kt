@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import java.util.concurrent.TimeUnit
 import kotlin.io.path.createTempDirectory
 
 class AgentsTest {
@@ -79,6 +80,64 @@ class AgentsTest {
         dir.deleteRecursively()
     }
 
+    /**
+     * The first removal can fail and leave proot's `.l2s.*` helper behind. A later pass deletes it.
+     * `mise prune -y` still runs after that.
+     */
+    @Test fun pruneRetriesADirectoryTheFirstRemovalLeft() {
+        val dir = createTempDirectory("prune-retry").toFile()
+        val old = File(dir, "mise/installs/opencode/2.1.1").apply { mkdirs() }
+        File(old, ".l2s.opencode0001.0001").writeText("link")
+        writeMiseStub(dir, old)
+        File(dir, "bin/rm").apply {
+            writeText(
+                """
+                #!/bin/sh
+                target=
+                for a in "${'$'}@"; do case "${'$'}a" in -*) ;; *) target=${'$'}a ;; esac; done
+                echo "${'$'}target" >>"${dir.path}/rm-calls"
+                if [ -e "${'$'}target/.l2s.opencode0001.0001" ]; then
+                  /bin/rm -f "${'$'}target/.l2s.opencode0001.0001"
+                  exit 1
+                fi
+                exec /bin/rm "${'$'}@"
+                """.trimIndent(),
+            )
+            setExecutable(true)
+        }
+        val (output, code) = runPrune(dir)
+        assertEquals(output, 0, code)
+        assertTrue("old version left", !old.exists())
+        assertEquals("first pass should fail and the second should delete", 2, File(dir, "rm-calls").readLines().size)
+        assertEquals("prune -y\n", File(dir, "pruned").readText())
+        dir.deleteRecursively()
+    }
+
+    /** A directory that never goes away is tried three times, then left for `mise prune -y`. */
+    @Test fun pruneStopsAfterThreeFailedRemovals() {
+        val dir = createTempDirectory("prune-stop").toFile()
+        val old = File(dir, "mise/installs/opencode/2.1.1").apply { mkdirs() }
+        writeMiseStub(dir, old)
+        File(dir, "bin/rm").apply {
+            writeText(
+                """
+                #!/bin/sh
+                target=
+                for a in "${'$'}@"; do case "${'$'}a" in -*) ;; *) target=${'$'}a ;; esac; done
+                echo "${'$'}target" >>"${dir.path}/rm-calls"
+                exit 1
+                """.trimIndent(),
+            )
+            setExecutable(true)
+        }
+        val (output, code) = runPrune(dir)
+        assertEquals(output, 0, code)
+        assertTrue("gave up on a directory that is still there", old.exists())
+        assertEquals(3, File(dir, "rm-calls").readLines().size)
+        assertEquals("prune -y\n", File(dir, "pruned").readText())
+        dir.deleteRecursively()
+    }
+
     /** OpenCode installs from before 2 have no node, and mise needs it for OpenCode 2's postinstall. */
     @Test fun updatesAddNodeForOpencode() {
         assertEquals(
@@ -86,5 +145,36 @@ class AgentsTest {
                 "then mise use -g node@lts; fi",
             MISE_NODE_FOR_AGENTS,
         )
+    }
+
+    private fun writeMiseStub(dir: File, install: File) {
+        File(dir, "bin/mise").apply {
+            parentFile.mkdirs()
+            writeText(
+                """
+                #!/bin/sh
+                if [ "${'$'}1" = ls ]; then
+                  printf '{ "opencode": [{ "install_path": "%s" }] }\n' "${install.path}"
+                else
+                  echo "${'$'}*" >"${dir.path}/pruned"
+                fi
+                """.trimIndent(),
+            )
+            setExecutable(true)
+        }
+    }
+
+    private fun runPrune(dir: File): Pair<String, Int> {
+        val process = ProcessBuilder("sh", "-c", MISE_PRUNE).redirectErrorStream(true)
+        process.environment()["PATH"] = "${File(dir, "bin").path}:${System.getenv("PATH")}"
+        val p = process.start()
+        val output = StringBuilder()
+        val reader = Thread { p.inputStream.bufferedReader().use { output.append(it.readText()) } }
+        reader.start()
+        val finished = p.waitFor(10, TimeUnit.SECONDS)
+        if (!finished) p.destroyForcibly()
+        reader.join(1_000)
+        assertTrue(output.toString() + "timed out", finished)
+        return output.toString() to p.exitValue()
     }
 }
