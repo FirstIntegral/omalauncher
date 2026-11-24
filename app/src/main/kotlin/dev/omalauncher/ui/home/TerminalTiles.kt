@@ -8,6 +8,8 @@ import android.view.Surface
 import android.view.TextureView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -32,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -180,6 +183,15 @@ class TerminalTiles(
     }
 
     /**
+     * A tap on [term]'s tile, as the tile itself saw it: the terminal takes the keyboard unless a tile already has it.
+     * The tile's own overlay has had the tap by then, so one it answered isn't answered twice, and a press outside
+     * the tile that was typing has already let that one go ([pressAt]).
+     */
+    fun wake(term: EmbeddedTerminal) {
+        if (active == null) activate(term)
+    }
+
+    /**
      * Gives [window] the keyboard back once an Android screen that covered it is gone, like the photo picker: a tile's
      * terminal takes it as a tap would, a Linux app's window as its activity resumes. False if the window is gone.
      */
@@ -309,6 +321,20 @@ class TerminalTiles(
             surface: Rect?,
         ): Rect? = if (fieldFocused) tile else surface?.let { tile ?: it }
 
+        /**
+         * What a press on a terminal tile has come to, [moved] pixels from where it landed: a drag once it leaves
+         * [slop], which is the pager's or home's and never wakes the tile, and a tap if it lifts before that.
+         */
+        internal fun pressSoFar(
+            moved: Float,
+            slop: Float,
+            pressed: Boolean,
+        ) = when {
+            moved > slop -> TilePress.Dragged
+            pressed -> TilePress.Held
+            else -> TilePress.Tapped
+        }
+
         /** The lift and cut for [bounds], see [liftFor]. */
         internal fun liftAndCut(
             bounds: Rect,
@@ -364,6 +390,9 @@ internal class HomeLock {
         widgets.clear()
     }
 }
+
+/** A press on a terminal tile so far: still down where it landed, lifted there, or moved away; see [TerminalTiles.pressSoFar]. */
+internal enum class TilePress { Held, Tapped, Dragged }
 
 /** A text field on a home tile's widget, which has the keyboard while it's [TerminalTiles.field]; [release] takes its focus away. */
 class TileField(
@@ -462,7 +491,37 @@ fun TerminalView(
     // The tile's tab went away (its visible turned false) or the node did: out of sight, the terminal mustn't keep the
     // keyboard, or the home screen lifted for a tile that no longer shows.
     DisposableEffect(term) { onDispose { if (tiles.active === term) tiles.deactivate() } }
-    Box(modifier.onGloballyPositioned { term.bounds = it.boundsInWindow().translate(0f, tiles.lift) }) {
+    // A tap anywhere in the tile wakes it, seen here before the tile's content and never taken from it. The overlay
+    // below asks for the same, but a tap on the terminal's text didn't always get that far: on a Galaxy S24 Ultra only
+    // the line with the prompt woke the tile (#70). A press home took first (a tile being arranged, an open folder)
+    // doesn't count, nor one held as long as a long press, which lifts the tile instead.
+    val wake =
+        if (!interactive) {
+            Modifier
+        } else {
+            Modifier.pointerInput(term) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(pass = PointerEventPass.Initial)
+                    val press =
+                        withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+                            var press = TilePress.Held
+                            while (press == TilePress.Held) {
+                                // After the overlay's turn, so wake() can tell a tap it already answered.
+                                val change = awaitPointerEvent(PointerEventPass.Final).changes.firstOrNull { it.id == down.id }
+                                press =
+                                    if (change == null) {
+                                        TilePress.Dragged
+                                    } else {
+                                        TerminalTiles.pressSoFar((change.position - down.position).getDistance(), viewConfiguration.touchSlop, change.pressed)
+                                    }
+                            }
+                            press
+                        }
+                    if (press == TilePress.Tapped) tiles.wake(term)
+                }
+            }
+        }
+    Box(modifier.onGloballyPositioned { term.bounds = it.boundsInWindow().translate(0f, tiles.lift) }.then(wake)) {
         AndroidView(
             factory = { EmbeddedWindowView(it, tiles) },
             update = { it.window = window },
